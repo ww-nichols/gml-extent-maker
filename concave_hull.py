@@ -5,7 +5,7 @@ from shapely.ops import cascaded_union, polygonize
 from scipy.spatial import Delaunay
 import numpy as np
 import math
-import shapely
+from shapely import geometry
 
 def alpha_shape(points, alpha):
     """
