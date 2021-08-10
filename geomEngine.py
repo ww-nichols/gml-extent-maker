@@ -3,7 +3,7 @@
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection, box
-from shapely.ops import linemerge
+from shapely.ops import linemerge, transform
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as feature
@@ -104,7 +104,7 @@ def plot_geoms(geom):
     #bokeh interactive plot
     bokeh_plot(geom)
     
-    #matplotlib plot with coastlines
+    #matplotlib plot with coastlines of spatial extent
     
     fig = plt.figure()
     plt.subplot(2, 1, 1)
@@ -123,6 +123,8 @@ def plot_geoms(geom):
     gridslines = ax.gridlines(draw_labels=True)
     plt.show()
 
+    #matplotlib plot with coastlines of Gulf of Mexico
+        
     plt.subplot(2, 1, 2)
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([-98,-80,18,32], ccrs.PlateCarree())
@@ -181,6 +183,65 @@ def bokeh_plot(geom):
         print('not implemented for this geom type')
     show(p)
     
+def geom_comparison_bokeh_plot(original_geom, processed_geom):
+    ## plot 2 geometries on same bokeh plot, for comparing original vs simplified geoms
+    
+    if checkCollection(original_geom) == False:
+        geom = makeCollection(original_geom)
+    if checkCollection(processed_geom) == False:
+        geom = makeCollection(processed_geom)
+        
+    orig_geo_source = GeoJSONDataSource(geojson=(gpd.GeoSeries([original_geom]).to_json()))
+    proc_geo_source = GeoJSONDataSource(geojson=(gpd.GeoSeries([processed_geom]).to_json()))
+ 
+    p = figure()
+    
+    ## original geom
+    if (original_geom.geom_type == 'MultiPolygon') or (original_geom.geom_type == 'Polygon'):
+        geo_source = GeoJSONDataSource(geojson=(gpd.GeoSeries([geom]).to_json()))
+        p.patches('xs', 'ys', source=geo_source, fill_color="white",
+        fill_alpha=0.7, line_color="red",)
+    elif (original_geom.geom_type == 'MultiLineString') or (original_geom.geom_type == 'LineString'):
+        for g, color in zip(original_geom, it.cycle(Category10[10])):
+            jsonGeom = json.loads(gpd.GeoSeries([g]).to_json())
+            table = jsonGeom['features'][0]['geometry']['coordinates']
+            df = pd.DataFrame(table)
+            df.columns = ['Longitude', 'Latitude']
+            p.line(df['Longitude'], df['Latitude'], color=color, line_width=3)
+    elif (original_geom.geom_type == 'MultiPoint') or (original_geom.geom_type == 'Point'):
+        pts = []
+        for pt in original_geom:
+            pts.append(pt)
+        geomCollect = gjson.GeometryCollection(pts)
+        geo_source = GeoJSONDataSource(geojson=gjson.dumps(geomCollect))
+        p.circle('x', 'y', source=geo_source, color="red", size=5)
+    else:
+        print('not implemented for this geom type')    
+    
+    # processed geom
+    if (processed_geom.geom_type == 'MultiPolygon') or (processed_geom.geom_type == 'Polygon'):
+        geo_source = GeoJSONDataSource(geojson=(gpd.GeoSeries([processed_geom]).to_json()))
+        p.patches('xs', 'ys', source=geo_source, fill_color="white",
+        fill_alpha=0.7, line_color="blue",)
+    elif (processed_geom.geom_type == 'MultiLineString') or (geom.geom_type == 'LineString'):
+        for g in processed_geom:
+            jsonGeom = json.loads(gpd.GeoSeries([g]).to_json())
+            table = jsonGeom['features'][0]['geometry']['coordinates']
+            df = pd.DataFrame(table)
+            df.columns = ['Longitude', 'Latitude']
+            p.line(df['Longitude'], df['Latitude'], color="blue", line_width=3)
+    elif (processed_geom.geom_type == 'MultiPoint') or (processed_geom.geom_type == 'Point'):
+        pts = []
+        for pt in processed_geom:
+            pts.append(pt)
+        geomCollect = gjson.GeometryCollection(pts)
+        geo_source = GeoJSONDataSource(geojson=gjson.dumps(geomCollect))
+        p.circle('x', 'y', source=geo_source, color="blue", size=5)
+    else:
+        print('not implemented for this geom type')    
+
+    show(p) 
+    
 def check_valid(geom):
     return()
 
@@ -197,4 +258,18 @@ def latlontomercator_math(row):
     y_mer = list(map(lambda y: y * 20037508.34 / 180, y_mer_aux))
 
     return(x_mer, y_mer)
+
+def remove_z(geom):
+    return transform(lambda x, y, z=None: (x, y), geom)
+
+def convert2ptsList(geom):
+    pointsList = []
+    if (geom.geom_type == 'MultiLineString'):
+        for line in geom:
+            for x, y in line.coords:
+                pt_x = x
+                pt_y = y
+                newPoint = Point(pt_x,pt_y)
+                pointsList.append(newPoint)             
+    return pointsList
 
